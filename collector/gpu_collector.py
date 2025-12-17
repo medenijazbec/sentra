@@ -25,9 +25,11 @@ import ctypes
 import warnings
 from ctypes.util import find_library
 import pynvml
+import logging
 
 # Silence pynvml deprecation warning emitted at import time.
 warnings.filterwarnings("ignore", category=FutureWarning, module="pynvml")
+log = logging.getLogger(__name__)
 
 T = TypeVar("T")
 
@@ -39,6 +41,7 @@ _UNKNOWN_ERR = getattr(pynvml, "NVML_ERROR_UNKNOWN", None)
 if _UNKNOWN_ERR is not None:
     SOFT_NVML_ERRORS.add(_UNKNOWN_ERR)
 SOFT_NVML_ERRORS.discard(None)
+_LOGGED_NVML_ERRORS: set[tuple[str, int | None]] = set()
 
 NVML_ENV_HINTS = (
     "SENTRA_NVML_LIBRARY",
@@ -132,9 +135,20 @@ def _safe_nvml_call(func: Callable[..., T], *args, default: T | None = None) -> 
     try:
         return func(*args)
     except pynvml.NVMLError as err:
-        if getattr(err, "value", None) in SOFT_NVML_ERRORS:
-            return default
-        raise
+        err_value = getattr(err, "value", None)
+        if err_value not in SOFT_NVML_ERRORS:
+            func_name = getattr(func, "__name__", repr(func))
+            key = (func_name, err_value)
+            if key not in _LOGGED_NVML_ERRORS:
+                _LOGGED_NVML_ERRORS.add(key)
+                log.warning(
+                    "NVML call %s failed with %s (code=%s); returning default %r",
+                    func_name,
+                    err,
+                    err_value,
+                    default,
+                )
+        return default
 
 
 def collect_gpu_snapshot() -> List[Dict[str, Any]]:

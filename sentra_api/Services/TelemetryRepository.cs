@@ -7,6 +7,7 @@ namespace sentra_api.Services;
 public class TelemetryRepository
 {
     private readonly DbOptions _options;
+    private static readonly TimeSpan GpuStaleThreshold = TimeSpan.FromSeconds(30);
     private static readonly JsonSerializerOptions JsonOpts = new()
     {
         PropertyNameCaseInsensitive = true
@@ -39,6 +40,7 @@ public class TelemetryRepository
             cpu = await GetLatestCpuAsync(conn, ct);
             mem = await GetLatestMemoryAsync(conn, ct);
             gpus = await GetLatestGpuAsync(conn, ct);
+            gpus = PruneStaleGpuSamples(gpus);
             disks = await GetLatestDiskAsync(conn, ct);
             nets = await GetLatestNetAsync(conn, ct);
             fans = await GetLatestFanAsync(conn, ct);
@@ -221,6 +223,21 @@ public class TelemetryRepository
         }
 
         return results;
+    }
+
+    private static IReadOnlyList<GpuSample> PruneStaleGpuSamples(IReadOnlyList<GpuSample> samples)
+    {
+        if (samples.Count == 0)
+        {
+            return samples;
+        }
+
+        var cutoff = DateTime.UtcNow - GpuStaleThreshold;
+        var filtered = samples
+            .Where(g => g.Timestamp >= cutoff)
+            .ToArray();
+
+        return filtered.Length == samples.Count ? samples : filtered;
     }
 
     private async Task<IReadOnlyList<DiskSample>> GetLatestDiskAsync(SqliteConnection conn, CancellationToken ct)
