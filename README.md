@@ -1,4 +1,5 @@
 # sentra
+<img width="1536" height="1024" alt="sentra" src="https://github.com/user-attachments/assets/e7f3cf90-7067-4892-b912-96a3fc2a98d5" />
 
 sentra is a lightweight observability node that combines a Python collector, a .NET API, and a Vite/React dashboard to deliver GPU/host telemetry without Streamlit bloat. Bring-your-own SQLite volume, mount `/sys`, and flip GPUs on—sentra does the rest.
 
