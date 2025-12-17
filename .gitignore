@@ -1,0 +1,42 @@
+# --- General OS noise ---
+.DS_Store
+Thumbs.db
+
+# --- Environment / secrets ---
+.env
+.env.*
+
+# --- Node / Vite (web) ---
+web/node_modules/
+web/dist/
+web/.vite/
+web/.turbo/
+web/npm-debug.log*
+web/yarn-debug.log*
+web/yarn-error.log*
+
+# --- Python collectors ---
+__pycache__/
+*.pyc
+.venv/
+.pytest_cache/
+
+# --- .NET builds ---
+sentra_api/bin/
+sentra_api/obj/
+sentra_api/*.user
+sentra_api/*.suo
+
+# --- Local data / DBs ---
+/sentra.db
+data/
+*.sqlite*
+
+# --- Editor / tooling ---
+.vs/
+.vscode/
+.idea/
+
+# --- Logs ---
+logs/
+*.log

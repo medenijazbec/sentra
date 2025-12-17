@@ -1,0 +1,59 @@
+version: "3.9"
+
+x-sentra-env: &sentra-env
+  SENTRA_SAMPLE_INTERVAL: "2"
+  SENTRA_DOCKER_STATS: "0"
+  SENTRA_DB_PATH: "/data/sentra.db"
+  SENTRA_HOST_SYS: "/host_sys"
+  DOCKER_HOST: "unix:///var/run/docker.sock"
+
+services:
+  sentra-agent:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.agent
+    container_name: sentra-agent
+    restart: unless-stopped
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+    environment:
+      <<: *sentra-env
+    volumes:
+      - sentra_data:/data
+      - /sys:/host_sys:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+
+  sentra-api:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.api
+    container_name: sentra-api
+    restart: unless-stopped
+    environment:
+      SENTRA_DB_PATH: "/data/sentra.db"
+      ASPNETCORE_ENVIRONMENT: "Production"
+    depends_on:
+      - sentra-agent
+    volumes:
+      - sentra_data:/data
+    ports:
+      - "5099:8080"
+
+  sentra-web:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.web
+    container_name: sentra-web
+    restart: unless-stopped
+    depends_on:
+      - sentra-api
+    ports:
+      - "8501:80"
+
+volumes:
+  sentra_data: {}

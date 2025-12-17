@@ -1,0 +1,31 @@
+# How to run sentra after the React + C# migration
+#
+# Components:
+#   - collector agent (Python) writes to SQLite
+#   - sentra_api (ASP.NET Core) reads SQLite and exposes /api/telemetry
+#   - web (Vite + React) consumes the API
+#
+# Local dev (no Docker):
+#   python -m venv .venv && .\.venv\Scripts\activate
+#   pip install -r requirements.txt
+#   set SENTRA_DB_PATH=./sentra.db
+#   python -m collector.agent
+#
+#   # In another terminal (requires .NET 8 SDK):
+#   dotnet run --project sentra_api
+#
+#   # Frontend (requires npm):
+#   cd web
+#   npm install
+#   npm run dev -- --host
+#
+# Docker Compose (preferred):
+#   docker compose up --build
+#   - sentra-agent writes metrics to /data/sentra.db
+#   - sentra-api listens on 5099
+#   - sentra-web serves the React UI on 8501
+#
+# Notes:
+# - SENTRA_SAMPLE_INTERVAL controls sampling cadence (seconds).
+# - SENTRA_DB_PATH must be shared between agent and API (default /data/sentra.db).
+# - Mount /sys and docker.sock if you want fan + container stats available to the agent.

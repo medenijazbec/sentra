@@ -1,0 +1,30 @@
+# docker/Dockerfile.agent
+# Runs the Python collector loop that writes telemetry into SQLite.
+
+FROM python:3.12-slim
+
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends \
+        lm-sensors \
+        pciutils \
+        procps \
+    && rm -rf /var/lib/apt/lists/*
+
+ENV PYTHONUNBUFFERED=1
+ENV SENTRA_DB_PATH=/data/sentra.db
+ENV SENTRA_HOST_SYS=/host_sys
+ENV SENTRA_SAMPLE_INTERVAL=2
+ENV SENTRA_DOCKER_STATS=0
+ENV DOCKER_HOST=unix:///var/run/docker.sock
+
+WORKDIR /app
+
+COPY requirements.txt /app/requirements.txt
+RUN pip install --no-cache-dir -r /app/requirements.txt docker
+
+COPY api /app/api
+COPY collector /app/collector
+COPY config /app/config
+
+VOLUME ["/data"]
+ENTRYPOINT ["python", "-m", "collector.agent"]
