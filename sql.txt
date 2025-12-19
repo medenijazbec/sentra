@@ -1,63 +1,80 @@
--- SQLite schema used by sentra. Tables are created automatically on first run.
+-- MySQL schema used by sentra. Tables are created automatically on first run.
 
 CREATE TABLE IF NOT EXISTS cpu_samples (
-    ts INTEGER,
-    total_util REAL,
-    iowait REAL,
+    ts BIGINT NOT NULL,
+    total_util DOUBLE,
+    iowait DOUBLE,
     per_core TEXT,
-    cpu_temp REAL,
-    load1 REAL,
-    load5 REAL,
-    load15 REAL,
-    uptime_sec REAL
-);
+    cpu_temp DOUBLE,
+    load1 DOUBLE,
+    load5 DOUBLE,
+    load15 DOUBLE,
+    uptime_sec DOUBLE,
+    user_pct DOUBLE,
+    system_pct DOUBLE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 CREATE TABLE IF NOT EXISTS mem_samples (
-    ts INTEGER,
-    used_percent REAL,
-    used_bytes INTEGER,
-    total_bytes INTEGER,
-    swap_used_percent REAL
-);
+    ts BIGINT NOT NULL,
+    used_percent DOUBLE,
+    used_bytes BIGINT,
+    total_bytes BIGINT,
+    swap_used_percent DOUBLE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 CREATE TABLE IF NOT EXISTS gpu_samples (
-    ts INTEGER,
-    gpu_index INTEGER,
-    temp REAL,
-    util REAL,
-    power_w REAL,
-    vram_used_mb INTEGER,
-    vram_total_mb INTEGER,
-    fan_percent REAL
-);
+    ts BIGINT NOT NULL,
+    gpu_index INT,
+    temp DOUBLE,
+    util DOUBLE,
+    power_w DOUBLE,
+    vram_used_mb INT,
+    vram_total_mb INT,
+    fan_percent DOUBLE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 CREATE TABLE IF NOT EXISTS disk_samples (
-    ts INTEGER,
+    ts BIGINT NOT NULL,
     device TEXT,
-    read_bps REAL,
-    write_bps REAL,
-    usage_percent REAL
-);
+    read_bps DOUBLE,
+    write_bps DOUBLE,
+    usage_percent DOUBLE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 CREATE TABLE IF NOT EXISTS net_samples (
-    ts INTEGER,
+    ts BIGINT NOT NULL,
     iface TEXT,
-    rx_bps REAL,
-    tx_bps REAL
-);
+    rx_bps DOUBLE,
+    tx_bps DOUBLE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 CREATE TABLE IF NOT EXISTS fan_samples (
-    ts INTEGER,
+    ts BIGINT NOT NULL,
     label TEXT,
-    rpm REAL
-);
+    rpm DOUBLE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
-CREATE INDEX IF NOT EXISTS idx_cpu_ts  ON cpu_samples(ts);
-CREATE INDEX IF NOT EXISTS idx_gpu_ts  ON gpu_samples(ts);
-CREATE INDEX IF NOT EXISTS idx_disk_ts ON disk_samples(ts);
-CREATE INDEX IF NOT EXISTS idx_net_ts  ON net_samples(ts);
-CREATE INDEX IF NOT EXISTS idx_fan_ts  ON fan_samples(ts);
+CREATE TABLE IF NOT EXISTS dashboard_settings (
+    `key` VARCHAR(128) PRIMARY KEY,
+    `value` TEXT NOT NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE IF NOT EXISTS gpu_labels (
+    gpu_index INT PRIMARY KEY,
+    label TEXT NOT NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE IF NOT EXISTS gpu_visibility (
+    gpu_index INT PRIMARY KEY,
+    hidden TINYINT NOT NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE INDEX idx_cpu_ts ON cpu_samples(ts);
+CREATE INDEX idx_mem_ts ON mem_samples(ts);
+CREATE INDEX idx_gpu_ts ON gpu_samples(ts);
+CREATE INDEX idx_disk_ts ON disk_samples(ts);
+CREATE INDEX idx_net_ts ON net_samples(ts);
+CREATE INDEX idx_fan_ts ON fan_samples(ts);
 
 -- Data retention:
--- The Streamlit sidebar buttons call datastore.purge_before(<cutoff>),
--- which DELETEs old rows, then VACUUMs.
+-- Both the Web UI and API call purge_before(<cutoff>), which deletes old rows.

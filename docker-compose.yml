@@ -3,11 +3,32 @@ version: "3.9"
 x-sentra-env: &sentra-env
   SENTRA_SAMPLE_INTERVAL: "2"
   SENTRA_DOCKER_STATS: "0"
-  SENTRA_DB_PATH: "/data/sentra.db"
   SENTRA_HOST_SYS: "/host_sys"
   DOCKER_HOST: "unix:///var/run/docker.sock"
 
+x-sentra-db-env: &sentra-db-env
+  SENTRA_DB_HOST: "sentra-mysql"
+  SENTRA_DB_PORT: "3306"
+  # Application DB credentials. Override via environment or .env
+  # using SENTRA_DB_USER / SENTRA_DB_PASSWORD / SENTRA_DB_NAME.
+  SENTRA_DB_USER: "${SENTRA_DB_USER:-root}"
+  SENTRA_DB_PASSWORD: "${SENTRA_DB_PASSWORD:-root}"
+  SENTRA_DB_NAME: "${SENTRA_DB_NAME:-sentra}"
+
 services:
+  sentra-mysql:
+    image: mysql:8.1
+    container_name: sentra-mysql
+    restart: unless-stopped
+    environment:
+      # Root password and initial database; by default this matches the
+      # app credentials above (root/root, db 'sentra') for first-time setup.
+      MYSQL_ROOT_PASSWORD: "${SENTRA_DB_PASSWORD:-root}"
+      MYSQL_ROOT_HOST: "%"
+      MYSQL_DATABASE: "${SENTRA_DB_NAME:-sentra}"
+    volumes:
+      - sentra_mysql:/var/lib/mysql
+
   sentra-agent:
     build:
       context: .
@@ -22,7 +43,11 @@ services:
               count: all
               capabilities: [gpu]
     environment:
-      <<: *sentra-env
+      <<:
+        - *sentra-env
+        - *sentra-db-env
+    depends_on:
+      - sentra-mysql
     volumes:
       - sentra_data:/data
       - /sys:/host_sys:ro
@@ -35,12 +60,11 @@ services:
     container_name: sentra-api
     restart: unless-stopped
     environment:
-      SENTRA_DB_PATH: "/data/sentra.db"
+      <<: *sentra-db-env
       ASPNETCORE_ENVIRONMENT: "Production"
     depends_on:
       - sentra-agent
-    volumes:
-      - sentra_data:/data
+      - sentra-mysql
     ports:
       - "5099:8080"
 
@@ -57,3 +81,4 @@ services:
 
 volumes:
   sentra_data: {}
+  sentra_mysql: {}

@@ -10,7 +10,11 @@
 #     -p 8501:8501 \
 #     -e STREAMLIT_SERVER_HEADLESS=true \
 #     -e STREAMLIT_BROWSER_GATHERUSAGESTATS=false \
-#     -e SENTRA_DB_PATH=/data/sentra.db \
+#     -e SENTRA_DB_HOST=mysql \
+#     -e SENTRA_DB_PORT=3306 \
+#     -e SENTRA_DB_USER=root \
+#     -e SENTRA_DB_PASSWORD=root \
+#     -e SENTRA_DB_NAME=sentra \
 #     -e SENTRA_HOST_SYS=/host_sys \
 #     -e SENTRA_SAMPLE_INTERVAL=2 \
 #     -e SENTRA_DOCKER_STATS=0 \
@@ -47,8 +51,12 @@ ENV STREAMLIT_BROWSER_GATHERUSAGESTATS=false
 # Tell docker SDK inside the container to talk to the host's socket.
 ENV DOCKER_HOST=unix:///var/run/docker.sock
 
-# Where SQLite DB will live (we mount /data as a volume)
-ENV SENTRA_DB_PATH=/data/sentra.db
+# MySQL connection defaults
+ENV SENTRA_DB_HOST=mysql
+ENV SENTRA_DB_PORT=3306
+ENV SENTRA_DB_USER=root
+ENV SENTRA_DB_PASSWORD=root
+ENV SENTRA_DB_NAME=sentra
 ENV SENTRA_HOST_SYS=/host_sys
 
 # How often Streamlit refreshes (seconds)

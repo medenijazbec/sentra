@@ -1,14 +1,17 @@
 # How to run sentra after the React + C# migration
 #
 # Components:
-#   - collector agent (Python) writes to SQLite
-#   - sentra_api (ASP.NET Core) reads SQLite and exposes /api/telemetry
+#   - collector agent (Python) writes host + GPU samples into MySQL
+#   - sentra_api (ASP.NET Core) reads MySQL and exposes /api/telemetry
 #   - web (Vite + React) consumes the API
 #
 # Local dev (no Docker):
 #   python -m venv .venv && .\.venv\Scripts\activate
 #   pip install -r requirements.txt
-#   set SENTRA_DB_PATH=./sentra.db
+#   set SENTRA_DB_HOST=localhost
+#   set SENTRA_DB_USER=root
+#   set SENTRA_DB_PASSWORD=dj892ahdb8af28
+#   set SENTRA_DB_NAME=sentra
 #   python -m collector.agent
 #
 #   # In another terminal (requires .NET 8 SDK):
@@ -21,11 +24,19 @@
 #
 # Docker Compose (preferred):
 #   docker compose up --build
-#   - sentra-agent writes metrics to /data/sentra.db
+#   - sentra-mysql stores telemetry; agent + API talk to it
 #   - sentra-api listens on 5099
 #   - sentra-web serves the React UI on 8501
 #
 # Notes:
 # - SENTRA_SAMPLE_INTERVAL controls sampling cadence (seconds).
-# - SENTRA_DB_PATH must be shared between agent and API (default /data/sentra.db).
+# - Configure `SENTRA_DB_HOST`, `SENTRA_DB_PORT`, `SENTRA_DB_USER`, `SENTRA_DB_PASSWORD`, and `SENTRA_DB_NAME` before booting.
 # - Mount /sys and docker.sock if you want fan + container stats available to the agent.
+cd /srv/share/sentra
+docker compose down
+docker compose build --no-cache && docker compose up -d
+
+cd /srv/share/sentra
+docker compose down -v      # IMPORTANT: wipes old DB and credentials
+docker compose build --no-cache
+docker compose up -d

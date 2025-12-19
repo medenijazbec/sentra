@@ -1,5 +1,5 @@
 # docker/Dockerfile.agent
-# Runs the Python collector loop that writes telemetry into SQLite.
+# Runs the Python collector loop that writes telemetry into MySQL.
 
 FROM python:3.12-slim
 
@@ -11,7 +11,11 @@ RUN apt-get update && \
     && rm -rf /var/lib/apt/lists/*
 
 ENV PYTHONUNBUFFERED=1
-ENV SENTRA_DB_PATH=/data/sentra.db
+ENV SENTRA_DB_HOST=mysql
+ENV SENTRA_DB_PORT=3306
+ENV SENTRA_DB_USER=root
+ENV SENTRA_DB_PASSWORD=root
+ENV SENTRA_DB_NAME=sentra
 ENV SENTRA_HOST_SYS=/host_sys
 ENV SENTRA_SAMPLE_INTERVAL=2
 ENV SENTRA_DOCKER_STATS=0

@@ -1,5 +1,5 @@
 # docker/Dockerfile.api
-# ASP.NET Core API that exposes SQLite-backed telemetry.
+# ASP.NET Core API that exposes MySQL-backed telemetry.
 
 FROM mcr.microsoft.com/dotnet/sdk:8.0 AS build
 WORKDIR /src
@@ -13,7 +13,6 @@ RUN dotnet publish ./sentra_api/sentra_api.csproj -c Release -o /app/publish
 FROM mcr.microsoft.com/dotnet/aspnet:8.0 AS final
 WORKDIR /app
 ENV ASPNETCORE_URLS=http://+:8080
-ENV SENTRA_DB_PATH=/data/sentra.db
 
 COPY --from=build /app/publish .
 EXPOSE 8080

@@ -2,7 +2,7 @@
 Lightweight headless sampler for sentra.
 
 This replaces the Streamlit-driven sampling loop so we can keep writing
-host/GPU data into SQLite for the new C# API + React UI.
+host/GPU data into MySQL for the new C# API + React UI.
 """
 
 from __future__ import annotations

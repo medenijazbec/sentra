@@ -1,6 +1,6 @@
 namespace sentra_api.Models;
 
-public record DbOptions(string DbPath);
+public record DbOptions(string ConnectionString);
 
 public record PurgeRequest(long? CutoffEpoch);
 
@@ -22,7 +22,7 @@ public record CpuSummary(
     double? Load5,
     double? Load15,
     IReadOnlyList<double> PerCore,
-    long? UptimeSec,
+    double? UptimeSec,
     double? UserPct,
     double? SystemPct
 );
@@ -43,7 +43,8 @@ public record GpuSample(
     double? PowerW,
     int? VramUsedMb,
     int? VramTotalMb,
-    double? FanPercent
+    double? FanPercent,
+    string? Label
 );
 
 public record DiskSample(

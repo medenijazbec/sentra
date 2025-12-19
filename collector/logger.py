@@ -7,7 +7,7 @@ High-level "one shot" sampler that:
 1. Collects system snapshot (CPU/RAM/Disk/Net/Fans/etc.)
 2. Collects GPU snapshot(s)
 3. Collects Docker container stats
-4. Inserts host+gpu snapshot data into the SQLite datastore
+4. Inserts host+gpu snapshot data into the MySQL datastore
 
 This is called from the Streamlit dashboard every refresh cycle.
 We pass in the previous disk/net counters (for throughput deltas),
@@ -35,7 +35,7 @@ def collect_and_store(
     Dict[str, psutil._common.snetio],
 ]:
     """
-    Collect a fresh snapshot (system + gpu + docker), write host+gpu to SQLite,
+    Collect a fresh snapshot (system + gpu + docker), write host+gpu to MySQL,
     and return everything for immediate UI display.
 
     Returns:

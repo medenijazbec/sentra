@@ -207,7 +207,7 @@ export default function App() {
           <h1>Real-time insight without the Streamlit glass.</h1>
           <p>
             This new React dashboard talks to a lightweight C# API that reads
-            the same SQLite data the collectors fill. Swap between time windows,
+            the same MySQL data the collectors fill. Swap between time windows,
             watch GPU thermals, and see how disks and network are behaving
             without opening a notebook.
           </p>

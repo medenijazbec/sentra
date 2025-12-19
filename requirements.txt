@@ -4,3 +4,4 @@ pynvml
 pandas
 altair
 streamlit-autorefresh
+mysql-connector-python

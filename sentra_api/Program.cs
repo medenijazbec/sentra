@@ -1,17 +1,17 @@
+using System;
+using System.Diagnostics;
 using Microsoft.OpenApi.Models;
+using MySqlConnector;
 using sentra_api.Models;
 using sentra_api.Services;
-using SQLitePCL;
 
 var builder = WebApplication.CreateBuilder(args);
 
 builder.Configuration.AddEnvironmentVariables();
 
-// Ensure SQLite provider is wired up before any connections open.
-Batteries_V2.Init();
-
-var dbPath = ResolveDbPath(builder.Configuration);
-builder.Services.AddSingleton(new DbOptions(dbPath));
+var dbConnectionString = ResolveDbConnectionString(builder.Configuration);
+var dbSummary = BuildDbSummary(dbConnectionString);
+builder.Services.AddSingleton(new DbOptions(dbConnectionString));
 builder.Services.AddScoped<TelemetryRepository>();
 
 builder.Services.AddCors(opt =>
@@ -26,7 +26,6 @@ builder.Services.AddCors(opt =>
 
         if (origins.Length == 0)
         {
-            // permissive fallback to avoid CORS issues on LAN hosts/ports
             p.AllowAnyOrigin()
              .AllowAnyHeader()
              .AllowAnyMethod();
@@ -46,11 +45,23 @@ builder.Services.AddSwaggerGen(opt =>
     {
         Title = "sentra API",
         Version = "v1",
-        Description = "Read-only API for sentra host telemetry stored in SQLite."
+        Description = "Read-only API for sentra host telemetry stored in MySQL."
     });
 });
 
 var app = builder.Build();
+
+if (OperatingSystem.IsWindows())
+{
+    try
+    {
+        Process.GetCurrentProcess().PriorityClass = ProcessPriorityClass.High;
+    }
+    catch
+    {
+        // best effort
+    }
+}
 
 app.UseCors("ui");
 
@@ -66,7 +77,7 @@ app.MapGet("/api/health", () =>
     {
         status = "ok",
         time = DateTimeOffset.UtcNow,
-        database = dbPath
+        database = dbSummary
     });
 });
 
@@ -92,29 +103,59 @@ app.MapPost("/api/telemetry/purge", async (TelemetryRepository repo, PurgeReques
 
 app.Run();
 
-static string ResolveDbPath(IConfiguration config)
+static string ResolveDbConnectionString(IConfiguration config)
 {
-    var path = Environment.GetEnvironmentVariable("SENTRA_DB_PATH")
-               ?? config["SENTRA_DB_PATH"]
-               ?? "/data/sentra.db";
+    var envUrl = Environment.GetEnvironmentVariable("SENTRA_DB_URL") ??
+                 config["SENTRA_DB_URL"] ??
+                 string.Empty;
 
-    var normalized = path.Replace("\\", "/");
-    if (normalized.StartsWith("/data", StringComparison.OrdinalIgnoreCase) &&
-        !Directory.Exists("/data"))
+    MySqlConnectionStringBuilder builder;
+    if (!string.IsNullOrWhiteSpace(envUrl))
     {
-        path = Path.Combine(AppContext.BaseDirectory, "sentra.db");
+        builder = new MySqlConnectionStringBuilder(envUrl);
+    }
+    else
+    {
+        var host = Environment.GetEnvironmentVariable("SENTRA_DB_HOST") ??
+                   config["SENTRA_DB_HOST"] ??
+                   "mysql";
+        var port = Environment.GetEnvironmentVariable("SENTRA_DB_PORT") ??
+                   config["SENTRA_DB_PORT"] ??
+                   "3306";
+        var user = Environment.GetEnvironmentVariable("SENTRA_DB_USER") ??
+                   config["SENTRA_DB_USER"] ??
+                   "root";
+        var password = Environment.GetEnvironmentVariable("SENTRA_DB_PASSWORD") ??
+                       config["SENTRA_DB_PASSWORD"] ??
+                       "root";
+        var database = Environment.GetEnvironmentVariable("SENTRA_DB_NAME") ??
+                       config["SENTRA_DB_NAME"] ??
+                       "sentra";
+
+        builder = new MySqlConnectionStringBuilder
+        {
+            Server = host,
+            Port = uint.TryParse(port, out var parsed) ? parsed : 3306,
+            UserID = user,
+            Password = password,
+            Database = database
+        };
     }
 
-    if (!Path.IsPathRooted(path))
-    {
-        path = Path.Combine(AppContext.BaseDirectory, path);
-    }
+    builder.SslMode = MySqlSslMode.None;
+    builder.CharacterSet = "utf8mb4";
+    builder.AllowPublicKeyRetrieval = true;
+    builder.AllowUserVariables = true;
+    builder.Pooling = true;
+    builder.ConnectionTimeout = 30;
+    builder.DefaultCommandTimeout = 45;
+    builder.ConvertZeroDateTime = true;
+    return builder.ConnectionString;
+}
 
-    var dir = Path.GetDirectoryName(path);
-    if (!string.IsNullOrWhiteSpace(dir))
-    {
-        Directory.CreateDirectory(dir);
-    }
-
-    return path;
+static string BuildDbSummary(string connectionString)
+{
+    var builder = new MySqlConnectionStringBuilder(connectionString);
+    var database = string.IsNullOrWhiteSpace(builder.Database) ? "sentra" : builder.Database;
+    return $"{builder.UserID}@{builder.Server}:{builder.Port}/{database}";
 }

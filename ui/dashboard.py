@@ -67,10 +67,7 @@ GPU_LOG_HEADER = "timestamp,gpu_index,temp,util,power,vram"
 
 
 def get_gpu_log_path() -> str:
-    path = config.get_db_path()
-    dirpath = os.path.dirname(path)
-    if not dirpath:
-        dirpath = "."
+    dirpath = config.get_data_dir()
     os.makedirs(dirpath, exist_ok=True)
     return os.path.join(dirpath, GPU_LOG_FILENAME)
 
@@ -181,7 +178,7 @@ if col_purge_b.button("Purge >24h"):
     datastore.purge_before(time.time() - config.ONE_DAY)
 
 st.sidebar.markdown("---")
-st.sidebar.write(f"DB path: `{config.get_db_path()}`")
+st.sidebar.write(f"Telemetry DB: `{config.get_db_summary()}`")
 
 
 # ---------- Stateful counters for throughput ----------
