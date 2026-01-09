@@ -1,4 +1,4 @@
--- MySQL schema used by sentra. Tables are created automatically on first run.
+-- Full MySQL schema used by sentra. Tables are created automatically on first run.
 
 CREATE TABLE IF NOT EXISTS cpu_samples (
     ts BIGINT NOT NULL,
@@ -67,6 +67,17 @@ CREATE TABLE IF NOT EXISTS gpu_labels (
 CREATE TABLE IF NOT EXISTS gpu_visibility (
     gpu_index INT PRIMARY KEY,
     hidden TINYINT NOT NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE IF NOT EXISTS fan_profiles (
+    fan_id VARCHAR(255) PRIMARY KEY,
+    display_name TEXT,
+    mode VARCHAR(16) NOT NULL,
+    max_rpm INT,
+    curve_mode VARCHAR(16),
+    curve_source VARCHAR(16),
+    curve_points TEXT,
+    gpu_indices TEXT
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 CREATE INDEX idx_cpu_ts ON cpu_samples(ts);

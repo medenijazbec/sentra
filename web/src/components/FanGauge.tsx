@@ -3,15 +3,17 @@ import { FanSample } from "../types/telemetry";
 type Props = {
   fan: FanSample;
   maxRpm: number;
+  displayName?: string;
 };
 
-export function FanGauge({ fan, maxRpm }: Props) {
+export function FanGauge({ fan, maxRpm, displayName }: Props) {
   const rpm = Math.max(fan.rpm ?? 0, 0);
   const safeMax = Math.max(maxRpm, rpm, 1);
   const pct = Math.min(rpm / safeMax, 1);
   const radius = 50;
   const circumference = 2 * Math.PI * radius;
   const offset = circumference - pct * circumference;
+  const showId = displayName && displayName !== fan.label;
 
   return (
     <div className="radial-gauge">
@@ -38,7 +40,10 @@ export function FanGauge({ fan, maxRpm }: Props) {
           RPM
         </text>
       </svg>
-      <div className="radial-label">{fan.label}</div>
+      <div className="radial-label">
+        <div className="fan-label">{displayName ?? fan.label}</div>
+        {showId && <div className="fan-id">{fan.label}</div>}
+      </div>
     </div>
   );
 }

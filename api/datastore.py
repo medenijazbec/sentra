@@ -125,6 +125,18 @@ def init_db_if_needed() -> None:
                 hidden TINYINT NOT NULL
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
             """,
+            """
+            CREATE TABLE IF NOT EXISTS fan_profiles (
+                fan_id VARCHAR(255) PRIMARY KEY,
+                display_name TEXT,
+                mode VARCHAR(16) NOT NULL,
+                max_rpm INT,
+                curve_mode VARCHAR(16),
+                curve_source VARCHAR(16),
+                curve_points TEXT,
+                gpu_indices TEXT
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+            """,
         ):
             cursor.execute(sql)
 

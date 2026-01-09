@@ -68,6 +68,31 @@ public record FanSample(
     double? Rpm
 );
 
+public record FanCurvePoint(
+    double TempC,
+    int Rpm
+);
+
+public record FanProfile(
+    string FanId,
+    string? DisplayName,
+    string Mode,
+    int? MaxRpm,
+    string CurveMode,
+    string? CurveSource,
+    IReadOnlyList<FanCurvePoint> Curve,
+    IReadOnlyList<int> GpuIndices
+);
+
+public record FanSettingsResponse(
+    IReadOnlyList<FanProfile> Fans,
+    IReadOnlyDictionary<string, double> MaxRecordedRpm
+);
+
+public record FanSettingsRequest(
+    IReadOnlyList<FanProfile> Fans
+);
+
 public record HistoryResponse(
     IReadOnlyList<HostHistoryPoint> Host,
     IReadOnlyList<GpuSample> Gpus

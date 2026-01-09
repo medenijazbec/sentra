@@ -21,8 +21,12 @@ from typing import Any, Dict, Optional, Tuple
 
 from . import sensors_collector
 
+DiskUsageType = getattr(psutil._common, "sdiskusage", Any)
+DiskIOCounters = getattr(psutil._common, "sdiskio", Any)
+NetIOCounters = getattr(psutil._common, "snetio", Any)
 
-def _safe_disk_usage(path: str) -> Optional[psutil._common.sdiskusage]:
+
+def _safe_disk_usage(path: str) -> Optional[DiskUsageType]:
     try:
         return psutil.disk_usage(path)
     except Exception:
@@ -50,10 +54,10 @@ def _get_swap_memory():
 
 
 def collect_system_snapshot(
-    prev_disk: Optional[Dict[str, psutil._common.sdiskio]],
-    prev_net: Optional[Dict[str, psutil._common.snetio]],
+    prev_disk: Optional[Dict[str, DiskIOCounters]],
+    prev_net: Optional[Dict[str, NetIOCounters]],
     interval_s: float,
-) -> Tuple[Dict[str, Any], Dict[str, psutil._common.sdiskio], Dict[str, psutil._common.snetio]]:
+) -> Tuple[Dict[str, Any], Dict[str, DiskIOCounters], Dict[str, NetIOCounters]]:
     """
     Collect one snapshot of host metrics.
 

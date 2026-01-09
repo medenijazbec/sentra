@@ -15,7 +15,6 @@ and get the updated counters back.
 """
 
 from typing import Tuple, Dict, Any, List, Optional
-import psutil
 
 import collector.system_collector as system_collector
 import collector.gpu_collector as gpu_collector
@@ -23,16 +22,20 @@ import collector.docker_collector as docker_collector
 import api.datastore as datastore
 
 
+DiskCounters = system_collector.DiskIOCounters
+NetCounters = system_collector.NetIOCounters
+
+
 def collect_and_store(
-    prev_disk: Optional[Dict[str, psutil._common.sdiskio]],
-    prev_net: Optional[Dict[str, psutil._common.snetio]],
+    prev_disk: Optional[Dict[str, DiskCounters]],
+    prev_net: Optional[Dict[str, NetCounters]],
     interval_s: float,
 ) -> Tuple[
     Dict[str, Any],
     List[Dict[str, Any]],
     List[Dict[str, Any]],
-    Dict[str, psutil._common.sdiskio],
-    Dict[str, psutil._common.snetio],
+    Dict[str, DiskCounters],
+    Dict[str, NetCounters],
 ]:
     """
     Collect a fresh snapshot (system + gpu + docker), write host+gpu to MySQL,

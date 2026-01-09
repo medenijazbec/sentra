@@ -445,6 +445,18 @@ a {
   color: var(--muted);
 }
 
+.fan-label {
+  font-size: 12px;
+  color: var(--text);
+}
+
+.fan-id {
+  font-size: 10px;
+  color: var(--muted);
+  letter-spacing: 0.04em;
+  margin-top: 2px;
+}
+
 .fan-missing {
   margin-top: 16px;
   padding: 12px;
@@ -465,6 +477,11 @@ a {
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
+}
+
+.chip-active {
+  background: rgba(var(--phosphor-rgb), 0.25);
+  box-shadow: 0 0 0 1px rgba(var(--phosphor-rgb), 0.5);
 }
 
 .fan-row,
@@ -490,6 +507,260 @@ a {
   font-size: 12px;
   color: var(--text);
   background: var(--chip-bg);
+}
+
+.fan-control-stack {
+  margin-top: 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.fan-control-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.fan-control-header h3 {
+  margin: 0 0 4px 0;
+  font-size: 12px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.fan-control-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  gap: 14px;
+}
+
+.fan-control-card {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.fan-control-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.fan-control-title {
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.fan-control-subtitle {
+  font-size: 11px;
+  color: var(--muted);
+}
+
+.fan-control-badges {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.fan-control-row {
+  display: grid;
+  grid-template-columns: 120px 1fr;
+  gap: 10px;
+  align-items: center;
+}
+
+.fan-control-row label {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--muted);
+}
+
+.fan-control-hint {
+  grid-column: 2 / -1;
+  font-size: 11px;
+  color: var(--muted);
+  margin-top: 4px;
+}
+
+.fan-warning {
+  border: 1px solid rgba(255, 190, 120, 0.35);
+  background: rgba(255, 190, 120, 0.08);
+  border-radius: 12px;
+  padding: 10px 12px;
+  font-size: 12px;
+  color: var(--text);
+}
+
+.segmented {
+  display: inline-flex;
+  gap: 6px;
+  padding: 4px;
+  border-radius: 999px;
+  border: var(--border);
+  background: var(--glass);
+}
+
+.segmented-btn {
+  border: none;
+  background: transparent;
+  color: var(--muted);
+  padding: 6px 12px;
+  border-radius: 999px;
+  cursor: pointer;
+  font-size: 12px;
+}
+
+.segmented-btn.active {
+  background: rgba(var(--phosphor-rgb), 0.2);
+  border: 1px solid rgba(var(--phosphor-rgb), 0.5);
+  color: var(--text);
+}
+
+.ghost-input {
+  width: 100%;
+  background: var(--glass);
+  border: var(--border);
+  border-radius: 10px;
+  padding: 8px 10px;
+  color: var(--text);
+  font-size: 13px;
+}
+
+.ghost-input:focus {
+  outline: none;
+  border-color: rgba(var(--phosphor-rgb), 0.7);
+  box-shadow: 0 0 0 1px rgba(var(--phosphor-rgb), 0.35);
+}
+
+.fan-curve-editor {
+  border: var(--border);
+  border-radius: 12px;
+  background: var(--glass);
+  padding: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.fan-curve-chart {
+  border: 1px solid rgba(var(--phosphor-rgb), 0.2);
+  border-radius: 12px;
+  padding: 8px;
+  background: rgba(0, 0, 0, 0.2);
+}
+
+.fan-curve-chart svg {
+  display: block;
+  width: 100%;
+}
+
+.fan-curve-bg {
+  fill: rgba(0, 0, 0, 0.3);
+  stroke: rgba(var(--phosphor-rgb), 0.2);
+  stroke-width: 1;
+  rx: 8px;
+}
+
+.fan-curve-grid {
+  stroke: rgba(var(--phosphor-rgb), 0.15);
+  stroke-width: 1;
+}
+
+.fan-curve-line {
+  fill: none;
+  stroke: var(--phosphor);
+  stroke-width: 2;
+}
+
+.fan-curve-point circle {
+  fill: var(--phosphor);
+  stroke: rgba(0, 0, 0, 0.4);
+  stroke-width: 2;
+  cursor: grab;
+}
+
+.fan-curve-point:active circle {
+  cursor: grabbing;
+}
+
+.fan-curve-label {
+  fill: var(--text);
+  font-size: 10px;
+  text-anchor: middle;
+}
+
+.fan-curve-axis {
+  fill: var(--muted);
+  font-size: 9px;
+  text-anchor: middle;
+}
+
+.fan-curve-axis--left {
+  text-anchor: start;
+}
+
+.fan-curve-foot {
+  display: flex;
+  justify-content: space-between;
+  font-size: 10px;
+  color: var(--muted);
+  margin-top: 6px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.fan-curve-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+}
+
+.fan-curve-title {
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--muted);
+}
+
+.fan-curve-hint {
+  font-size: 11px;
+  color: var(--muted);
+}
+
+.fan-curve-table {
+  display: grid;
+  gap: 8px;
+}
+
+.fan-curve-row {
+  display: grid;
+  grid-template-columns: 60px 1fr 1fr 1fr auto;
+  gap: 8px;
+  align-items: center;
+}
+
+.fan-curve-row--head {
+  font-size: 11px;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.ghost-btn--quiet {
+  padding: 6px 10px;
+  border-style: dashed;
+}
+
+.fan-curve-rpm {
+  font-size: 12px;
+  color: var(--muted);
 }
 
 .window-pill {
@@ -626,6 +897,23 @@ a {
 
   .slider-wrap {
     width: 100%;
+  }
+
+  .fan-control-head {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .fan-control-row {
+    grid-template-columns: 1fr;
+  }
+
+  .fan-control-hint {
+    grid-column: 1 / -1;
+  }
+
+  .fan-curve-row {
+    grid-template-columns: 1fr 1fr;
   }
 }
 

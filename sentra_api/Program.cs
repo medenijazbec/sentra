@@ -101,6 +101,19 @@ app.MapPost("/api/telemetry/purge", async (TelemetryRepository repo, PurgeReques
     return Results.Ok(new { purged_before = cutoff });
 });
 
+app.MapGet("/api/fans/settings", async (TelemetryRepository repo, CancellationToken ct) =>
+{
+    var settings = await repo.GetFanSettingsAsync(ct);
+    return Results.Ok(settings);
+});
+
+app.MapPut("/api/fans/settings", async (TelemetryRepository repo, FanSettingsRequest req, CancellationToken ct) =>
+{
+    await repo.SaveFanSettingsAsync(req, ct);
+    var settings = await repo.GetFanSettingsAsync(ct);
+    return Results.Ok(settings);
+});
+
 app.Run();
 
 static string ResolveDbConnectionString(IConfiguration config)

@@ -30,7 +30,15 @@ sentra_api/*.suo
 # --- Local data / DBs ---
 /sentra.db
 data/
+sentra_data/
+sentra_mysql/
+mysql-data/
+db/
+db_data/
 *.sqlite*
+*.db
+*.db-shm
+*.db-wal
 
 # --- Editor / tooling ---
 .vs/

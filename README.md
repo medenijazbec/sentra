@@ -5,11 +5,12 @@ sentra is a lightweight observability node that combines a Python collector, a .
 
 ## What sentra offers
 
-- **GPU + host sampling loop** – `collector/agent.py` grabs CPU, memory, disks, network, fans, and NVIDIA GPU stats via NVML; data lands in MySQL so it survives restarts.
-- **Docker-first packaging** – three Dockerfiles (`agent`, `api`, `web`) plus a compose file make it easy to run the collector, ASP.NET Core API, and nginx-served UI on a single host.
-- **Typed REST API** – `sentra_api` exposes `/api/telemetry/summary`, `/api/telemetry/history`, `/api/telemetry/purge`, and `/api/health` so other services or dashboards can reuse the data.
-- **Modern dashboard** – the `web` package is a Vite + React + TypeScript app that mirrors the Honeybadger glass aesthetic: slim sparklines, GPU mini-trends, sticky nav, and quick theme switching.
-- **GPU awareness** – docker-compose includes `deploy.resources.reservations.devices` for NVIDIA GPUs, and the collector handles NVML library discovery with helpful hints if host passthrough is missing.
+- **GPU + host sampling loop** - `collector/agent.py` collects CPU, memory, disks, network, fans, and NVIDIA GPU stats via NVML and writes them to MySQL.
+- **Docker packaging** - three Dockerfiles (`agent`, `api`, `web`) plus compose to run the collector, ASP.NET Core API, and nginx UI on one host.
+- **Typed REST API** - `sentra_api` exposes `/api/telemetry/summary`, `/api/telemetry/history`, `/api/telemetry/purge`, `/api/health`, and `/api/fans/settings`.
+- **Dashboard** - Vite + React UI with live stats, trends, and theme switching.
+- **GPU passthrough support** - compose includes NVIDIA device reservations, and the collector checks NVML availability.
+- **Fan control UI** - default mode reports RPM only; override mode stores per-fan names, max RPM, and temp curves (CPU or pooled GPU temps) in MySQL.
 
 ## Quick start
 

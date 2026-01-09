@@ -1,6 +1,4 @@
-using System;
 using System.Collections.Generic;
-using System.Linq;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
@@ -41,7 +39,6 @@ public class TelemetryRepository
         {
             await EnsureSchemaAsync(conn);
         }
-
         return conn;
     }
 
@@ -140,19 +137,6 @@ public class TelemetryRepository
                     hidden TINYINT NOT NULL
                 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
                 """
-                ,
-                """
-                CREATE TABLE IF NOT EXISTS fan_profiles (
-                    fan_id VARCHAR(255) PRIMARY KEY,
-                    display_name TEXT,
-                    mode VARCHAR(16) NOT NULL,
-                    max_rpm INT,
-                    curve_mode VARCHAR(16),
-                    curve_source VARCHAR(16),
-                    curve_points TEXT,
-                    gpu_indices TEXT
-                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
-                """
             };
 
             foreach (var sql in tableStatements)
@@ -193,59 +177,29 @@ public class TelemetryRepository
             SchemaLock.Release();
         }
     }
-
-    public async Task<int> GetHistoryWindowAsync(CancellationToken ct)
-    {
-        await using var conn = await OpenConnectionAsync();
-        var raw = await ReadSettingValueAsync(conn, HistoryWindowKey, ct);
-        if (int.TryParse(raw, out var parsed))
-        {
-            return Clamp(parsed, MinHistoryWindowMinutes, MaxHistoryWindowMinutes);
-        }
-
-        return DefaultHistoryWindowMinutes;
-    }
-
-    public async Task SetHistoryWindowAsync(int minutes, CancellationToken ct)
-    {
-        var normalized = Clamp(minutes, MinHistoryWindowMinutes, MaxHistoryWindowMinutes).ToString();
-        await using var conn = await OpenConnectionAsync();
-        await SetSettingValueAsync(conn, HistoryWindowKey, normalized, ct);
-    }
-
-    public async Task<int> GetRetentionHoursAsync(CancellationToken ct)
-    {
-        await using var conn = await OpenConnectionAsync();
-        var raw = await ReadSettingValueAsync(conn, RetentionHoursKey, ct);
-        if (int.TryParse(raw, out var parsed))
-        {
-            return Clamp(parsed, MinRetentionHours, MaxRetentionHours);
-        }
-
-        return DefaultRetentionHours;
     }
 
     public async Task SetRetentionHoursAsync(int hours, CancellationToken ct)
     {
         var normalized = Clamp(hours, MinRetentionHours, MaxRetentionHours).ToString();
-        await using var conn = await OpenConnectionAsync();
+        await using var conn = OpenConnection();
         await SetSettingValueAsync(conn, RetentionHoursKey, normalized, ct);
     }
 
     public async Task<Dictionary<int, string>> GetGpuLabelsAsync(CancellationToken ct)
     {
-        await using var conn = await OpenConnectionAsync();
+        await using var conn = OpenConnection();
         return await ReadGpuLabelsAsync(conn, ct);
     }
 
     public async Task SetGpuLabelAsync(int gpuIndex, string? label, CancellationToken ct)
     {
-        await using var conn = await OpenConnectionAsync();
+        await using var conn = OpenConnection();
         if (string.IsNullOrWhiteSpace(label))
         {
             await using var delete = conn.CreateCommand();
-            delete.CommandText = "DELETE FROM gpu_labels WHERE gpu_index = @idx";
-            delete.Parameters.AddWithValue("@idx", gpuIndex);
+            delete.CommandText = "DELETE FROM gpu_labels WHERE gpu_index = $idx";
+            delete.Parameters.AddWithValue("$idx", gpuIndex);
             await ExecuteNonQueryWithRetryAsync(delete, ct);
             return;
         }
@@ -253,28 +207,28 @@ public class TelemetryRepository
         await using var cmd = conn.CreateCommand();
         cmd.CommandText = """
             INSERT INTO gpu_labels (gpu_index, label)
-            VALUES (@idx, @label)
-            ON DUPLICATE KEY UPDATE label = VALUES(label)
+            VALUES ($idx, $label)
+            ON CONFLICT(gpu_index) DO UPDATE SET label = excluded.label
             """;
-        cmd.Parameters.AddWithValue("@idx", gpuIndex);
-        cmd.Parameters.AddWithValue("@label", label.Trim());
+        cmd.Parameters.AddWithValue("$idx", gpuIndex);
+        cmd.Parameters.AddWithValue("$label", label.Trim());
         await ExecuteNonQueryWithRetryAsync(cmd, ct);
     }
 
     public async Task<Dictionary<int, bool>> GetGpuVisibilityAsync(CancellationToken ct)
     {
-        await using var conn = await OpenConnectionAsync();
+        await using var conn = OpenConnection();
         return await ReadGpuVisibilityAsync(conn, ct);
     }
 
     public async Task SetGpuVisibilityAsync(int gpuIndex, bool hidden, CancellationToken ct)
     {
-        await using var conn = await OpenConnectionAsync();
+        await using var conn = OpenConnection();
         if (!hidden)
         {
             await using var delete = conn.CreateCommand();
-            delete.CommandText = "DELETE FROM gpu_visibility WHERE gpu_index = @idx";
-            delete.Parameters.AddWithValue("@idx", gpuIndex);
+            delete.CommandText = "DELETE FROM gpu_visibility WHERE gpu_index = $idx";
+            delete.Parameters.AddWithValue("$idx", gpuIndex);
             await ExecuteNonQueryWithRetryAsync(delete, ct);
             return;
         }
@@ -282,193 +236,38 @@ public class TelemetryRepository
         await using var cmd = conn.CreateCommand();
         cmd.CommandText = """
             INSERT INTO gpu_visibility (gpu_index, hidden)
-            VALUES (@idx, 1)
-            ON DUPLICATE KEY UPDATE hidden = VALUES(hidden)
+            VALUES ($idx, 1)
+            ON CONFLICT(gpu_index) DO UPDATE SET hidden = excluded.hidden
             """;
-        cmd.Parameters.AddWithValue("@idx", gpuIndex);
+        cmd.Parameters.AddWithValue("$idx", gpuIndex);
         await ExecuteNonQueryWithRetryAsync(cmd, ct);
-    }
-
-    public async Task<FanSettingsResponse> GetFanSettingsAsync(CancellationToken ct)
-    {
-        await using var conn = await OpenConnectionAsync();
-        var profiles = await ReadFanProfilesAsync(conn, ct);
-        var maxRecorded = await ReadFanMaxRpmAsync(conn, ct);
-
-        var fanIds = new HashSet<string>(profiles.Keys);
-        foreach (var fanId in maxRecorded.Keys)
-        {
-            fanIds.Add(fanId);
-        }
-
-        var fans = fanIds
-            .OrderBy(fanId => fanId)
-            .Select(fanId =>
-            {
-                profiles.TryGetValue(fanId, out var stored);
-                maxRecorded.TryGetValue(fanId, out var maxSeen);
-                var maxRpm = stored?.MaxRpm ?? (maxSeen > 0 ? (int)Math.Round(maxSeen) : DefaultFanMaxRpm);
-                var mode = NormalizeMode(stored?.Mode);
-                var curveMode = NormalizeCurveMode(stored?.CurveMode);
-                var curveSource = NormalizeCurveSource(stored?.CurveSource, curveMode);
-                var curve = stored?.Curve?.Count > 0 ? stored.Curve : DefaultFanCurve(maxRpm);
-                var gpuIndices = stored?.GpuIndices ?? Array.Empty<int>();
-                var displayName = string.IsNullOrWhiteSpace(stored?.DisplayName) ? null : stored!.DisplayName!.Trim();
-
-                return new FanProfile(
-                    fanId,
-                    displayName,
-                    mode,
-                    maxRpm,
-                    curveMode,
-                    curveSource,
-                    curve,
-                    gpuIndices
-                );
-            })
-            .ToList();
-
-        return new FanSettingsResponse(fans, maxRecorded);
-    }
-
-    public async Task SaveFanSettingsAsync(FanSettingsRequest request, CancellationToken ct)
-    {
-        if (request.Fans is null || request.Fans.Count == 0)
-        {
-            return;
-        }
-
-        await using var conn = await OpenConnectionAsync();
-        foreach (var fan in request.Fans)
-        {
-            if (string.IsNullOrWhiteSpace(fan.FanId))
-            {
-                continue;
-            }
-
-            var mode = NormalizeMode(fan.Mode);
-            var curveMode = NormalizeCurveMode(fan.CurveMode);
-            var curveSource = NormalizeCurveSource(fan.CurveSource, curveMode);
-            var maxRpm = fan.MaxRpm.HasValue ? Math.Max(0, fan.MaxRpm.Value) : (int?)null;
-            var curve = NormalizeCurve(fan.Curve, maxRpm ?? DefaultFanMaxRpm);
-            var gpuIndices = fan.GpuIndices?.Distinct().OrderBy(x => x).ToArray() ?? Array.Empty<int>();
-            var displayName = string.IsNullOrWhiteSpace(fan.DisplayName) ? null : fan.DisplayName!.Trim();
-
-            await using var cmd = conn.CreateCommand();
-            cmd.CommandText = """
-                INSERT INTO fan_profiles
-                (fan_id, display_name, mode, max_rpm, curve_mode, curve_source, curve_points, gpu_indices)
-                VALUES (@fan_id, @display_name, @mode, @max_rpm, @curve_mode, @curve_source, @curve_points, @gpu_indices)
-                ON DUPLICATE KEY UPDATE
-                    display_name = VALUES(display_name),
-                    mode = VALUES(mode),
-                    max_rpm = VALUES(max_rpm),
-                    curve_mode = VALUES(curve_mode),
-                    curve_source = VALUES(curve_source),
-                    curve_points = VALUES(curve_points),
-                    gpu_indices = VALUES(gpu_indices)
-                """;
-            cmd.Parameters.AddWithValue("@fan_id", fan.FanId.Trim());
-            cmd.Parameters.AddWithValue("@display_name", displayName);
-            cmd.Parameters.AddWithValue("@mode", mode);
-            cmd.Parameters.AddWithValue("@max_rpm", maxRpm);
-            cmd.Parameters.AddWithValue("@curve_mode", curveMode);
-            cmd.Parameters.AddWithValue("@curve_source", curveSource);
-            cmd.Parameters.AddWithValue("@curve_points", JsonSerializer.Serialize(curve, JsonOpts));
-            cmd.Parameters.AddWithValue("@gpu_indices", JsonSerializer.Serialize(gpuIndices, JsonOpts));
-            await ExecuteNonQueryWithRetryAsync(cmd, ct);
-        }
     }
 
     private static int Clamp(int value, int min, int max) => Math.Max(min, Math.Min(max, value));
 
-    private static async Task<string?> ReadSettingValueAsync(MySqlConnection conn, string key, CancellationToken ct)
+    private static async Task<string?> ReadSettingValueAsync(SqliteConnection conn, string key, CancellationToken ct)
     {
         await using var cmd = conn.CreateCommand();
-        cmd.CommandText = "SELECT `value` FROM dashboard_settings WHERE `key` = @key";
-        cmd.Parameters.AddWithValue("@key", key);
+        cmd.CommandText = "SELECT value FROM dashboard_settings WHERE key = $key";
+        cmd.Parameters.AddWithValue("$key", key);
         var result = await cmd.ExecuteScalarAsync(ct);
         return result as string;
     }
 
-    private static async Task SetSettingValueAsync(MySqlConnection conn, string key, string value, CancellationToken ct)
+    private static async Task SetSettingValueAsync(SqliteConnection conn, string key, string value, CancellationToken ct)
     {
         await using var cmd = conn.CreateCommand();
         cmd.CommandText = """
-            INSERT INTO dashboard_settings (`key`, `value`)
-            VALUES (@key, @value)
-            ON DUPLICATE KEY UPDATE `value` = VALUES(`value`)
+            INSERT INTO dashboard_settings (key, value)
+            VALUES ($key, $value)
+            ON CONFLICT(key) DO UPDATE SET value = excluded.value
             """;
-        cmd.Parameters.AddWithValue("@key", key);
-        cmd.Parameters.AddWithValue("@value", value);
+        cmd.Parameters.AddWithValue("$key", key);
+        cmd.Parameters.AddWithValue("$value", value);
         await ExecuteNonQueryWithRetryAsync(cmd, ct);
     }
 
-    private static async Task<Dictionary<string, FanProfile>> ReadFanProfilesAsync(MySqlConnection conn, CancellationToken ct)
-    {
-        const string sql = """
-            SELECT fan_id, display_name, mode, max_rpm, curve_mode, curve_source, curve_points, gpu_indices
-            FROM fan_profiles
-            """;
-
-        await using var cmd = conn.CreateCommand();
-        cmd.CommandText = sql;
-
-        var results = new Dictionary<string, FanProfile>();
-        await using var reader = await cmd.ExecuteReaderAsync(ct);
-        while (await reader.ReadAsync(ct))
-        {
-            var fanId = reader.GetString(0);
-            var displayName = reader.IsDBNull(1) ? null : reader.GetString(1);
-            var mode = reader.IsDBNull(2) ? "default" : reader.GetString(2);
-            var maxRpm = ReadInt(reader, 3);
-            var curveMode = reader.IsDBNull(4) ? "custom" : reader.GetString(4);
-            var curveSource = reader.IsDBNull(5) ? null : reader.GetString(5);
-            var curveRaw = reader.IsDBNull(6) ? null : reader.GetString(6);
-            var gpuRaw = reader.IsDBNull(7) ? null : reader.GetString(7);
-
-            var curve = ParseCurvePoints(curveRaw);
-            var gpuIndices = ParseGpuIndices(gpuRaw);
-
-            results[fanId] = new FanProfile(
-                fanId,
-                displayName,
-                mode,
-                maxRpm,
-                curveMode,
-                curveSource,
-                curve,
-                gpuIndices
-            );
-        }
-
-        return results;
-    }
-
-    private static async Task<Dictionary<string, double>> ReadFanMaxRpmAsync(MySqlConnection conn, CancellationToken ct)
-    {
-        const string sql = """
-            SELECT label, MAX(rpm) AS max_rpm
-            FROM fan_samples
-            GROUP BY label
-            """;
-
-        await using var cmd = conn.CreateCommand();
-        cmd.CommandText = sql;
-
-        var results = new Dictionary<string, double>();
-        await using var reader = await cmd.ExecuteReaderAsync(ct);
-        while (await reader.ReadAsync(ct))
-        {
-            var label = reader.GetString(0);
-            var maxRpm = reader.IsDBNull(1) ? 0 : reader.GetDouble(1);
-            results[label] = maxRpm;
-        }
-
-        return results;
-    }
-
-    private static async Task<Dictionary<int, string>> ReadGpuLabelsAsync(MySqlConnection conn, CancellationToken ct)
+    private static async Task<Dictionary<int, string>> ReadGpuLabelsAsync(SqliteConnection conn, CancellationToken ct)
     {
         const string sql = """
             SELECT gpu_index, label
@@ -492,7 +291,7 @@ public class TelemetryRepository
         return map;
     }
 
-    private static async Task<Dictionary<int, bool>> ReadGpuVisibilityAsync(MySqlConnection conn, CancellationToken ct)
+    private static async Task<Dictionary<int, bool>> ReadGpuVisibilityAsync(SqliteConnection conn, CancellationToken ct)
     {
         const string sql = """
             SELECT gpu_index, hidden
@@ -524,7 +323,7 @@ public class TelemetryRepository
         IReadOnlyList<FanSample> fans = Array.Empty<FanSample>();
         long latestTs = 0;
 
-        await using (var conn = await OpenConnectionAsync())
+        await using (var conn = OpenConnection())
         {
             cpu = await GetLatestCpuAsync(conn, ct);
             mem = await GetLatestMemoryAsync(conn, ct);
@@ -580,7 +379,7 @@ public class TelemetryRepository
         List<HostHistoryPoint> host;
         List<GpuSample> gpus;
 
-        await using (var conn = await OpenConnectionAsync())
+        await using (var conn = OpenConnection())
         {
             host = await GetHostHistoryAsync(conn, cutoffEpoch, ct);
             var gpuLabels = await ReadGpuLabelsAsync(conn, ct);
@@ -602,14 +401,18 @@ public class TelemetryRepository
             "fan_samples"
         };
 
-        await using var conn = await OpenConnectionAsync();
+        await using var conn = OpenConnection();
         foreach (var table in tables)
         {
             await using var del = conn.CreateCommand();
-            del.CommandText = $"DELETE FROM {table} WHERE ts < @cutoff";
-            del.Parameters.AddWithValue("@cutoff", cutoffEpoch);
+            del.CommandText = $"DELETE FROM {table} WHERE ts < $cutoff";
+            del.Parameters.AddWithValue("$cutoff", cutoffEpoch);
             await ExecuteNonQueryWithRetryAsync(del, ct);
         }
+
+        await using var vacuum = conn.CreateCommand();
+        vacuum.CommandText = "VACUUM";
+        await ExecuteNonQueryWithRetryAsync(vacuum, ct);
     }
 
     public async Task PurgeAllAsync(CancellationToken ct)
@@ -624,16 +427,20 @@ public class TelemetryRepository
             "fan_samples"
         };
 
-        await using var conn = await OpenConnectionAsync();
+        await using var conn = OpenConnection();
         foreach (var table in tables)
         {
             await using var del = conn.CreateCommand();
             del.CommandText = $"DELETE FROM {table}";
             await ExecuteNonQueryWithRetryAsync(del, ct);
         }
+
+        await using var vacuum = conn.CreateCommand();
+        vacuum.CommandText = "VACUUM";
+        await ExecuteNonQueryWithRetryAsync(vacuum, ct);
     }
 
-    private async Task<CpuSummary?> GetLatestCpuAsync(MySqlConnection conn, CancellationToken ct)
+    private async Task<CpuSummary?> GetLatestCpuAsync(SqliteConnection conn, CancellationToken ct)
     {
         const string sql = """
             SELECT ts, total_util, per_core, cpu_temp, load1, load5, load15, uptime_sec, user_pct, system_pct
@@ -663,13 +470,13 @@ public class TelemetryRepository
             ReadDouble(reader, 5),
             ReadDouble(reader, 6),
             perCore,
-            ReadDouble(reader, 7),
+            ReadLong(reader, 7),
             ReadDouble(reader, 8),
             ReadDouble(reader, 9)
         );
     }
 
-    private async Task<MemorySummary?> GetLatestMemoryAsync(MySqlConnection conn, CancellationToken ct)
+    private async Task<MemorySummary?> GetLatestMemoryAsync(SqliteConnection conn, CancellationToken ct)
     {
         const string sql = """
             SELECT ts, used_percent, used_bytes, total_bytes, swap_used_percent
@@ -697,7 +504,7 @@ public class TelemetryRepository
     }
 
     private async Task<IReadOnlyList<GpuSample>> GetLatestGpuAsync(
-        MySqlConnection conn,
+        SqliteConnection conn,
         CancellationToken ct,
         IReadOnlyDictionary<int, string>? gpuLabels = null)
     {
@@ -722,7 +529,9 @@ public class TelemetryRepository
         {
             var ts = ReadLong(reader, 0) ?? DateTimeOffset.UtcNow.ToUnixTimeSeconds();
             var gpuIndex = reader.GetInt32(1);
-            var label = gpuLabels != null && gpuLabels.TryGetValue(gpuIndex, out var named) ? named : null;
+            var label = gpuLabels != null && gpuLabels.TryGetValue(gpuIndex, out var named)
+                ? named
+                : null;
 
             results.Add(new GpuSample(
                 DateTimeOffset.FromUnixTimeSeconds(ts).UtcDateTime,
@@ -748,11 +557,14 @@ public class TelemetryRepository
         }
 
         var cutoff = DateTime.UtcNow - GpuStaleThreshold;
-        var filtered = samples.Where(g => g.Timestamp >= cutoff).ToArray();
+        var filtered = samples
+            .Where(g => g.Timestamp >= cutoff)
+            .ToArray();
+
         return filtered.Length == samples.Count ? samples : filtered;
     }
 
-    private async Task<IReadOnlyList<DiskSample>> GetLatestDiskAsync(MySqlConnection conn, CancellationToken ct)
+    private async Task<IReadOnlyList<DiskSample>> GetLatestDiskAsync(SqliteConnection conn, CancellationToken ct)
     {
         const string sql = """
             WITH ranked AS (
@@ -786,7 +598,7 @@ public class TelemetryRepository
         return results;
     }
 
-    private async Task<IReadOnlyList<NetSample>> GetLatestNetAsync(MySqlConnection conn, CancellationToken ct)
+    private async Task<IReadOnlyList<NetSample>> GetLatestNetAsync(SqliteConnection conn, CancellationToken ct)
     {
         const string sql = """
             WITH ranked AS (
@@ -819,7 +631,7 @@ public class TelemetryRepository
         return results;
     }
 
-    private async Task<IReadOnlyList<FanSample>> GetLatestFanAsync(MySqlConnection conn, CancellationToken ct)
+    private async Task<IReadOnlyList<FanSample>> GetLatestFanAsync(SqliteConnection conn, CancellationToken ct)
     {
         const string sql = """
             WITH ranked AS (
@@ -851,71 +663,63 @@ public class TelemetryRepository
         return results;
     }
 
-    private async Task<List<HostHistoryPoint>> GetHostHistoryAsync(MySqlConnection conn, long cutoffEpoch, CancellationToken ct)
+    private async Task<List<HostHistoryPoint>> GetHostHistoryAsync(SqliteConnection conn, long cutoffEpoch, CancellationToken ct)
     {
         var map = new Dictionary<long, HostHistoryPointBuilder>();
 
         const string cpuSql = """
             SELECT ts, total_util, cpu_temp
             FROM cpu_samples
-            WHERE ts >= @cutoff
+            WHERE ts >= $cutoff
             ORDER BY ts ASC
             """;
 
         await using (var cpuCmd = conn.CreateCommand())
         {
             cpuCmd.CommandText = cpuSql;
-            cpuCmd.Parameters.AddWithValue("@cutoff", cutoffEpoch);
+            cpuCmd.Parameters.AddWithValue("$cutoff", cutoffEpoch);
 
             await using var reader = await cpuCmd.ExecuteReaderAsync(ct);
             while (await reader.ReadAsync(ct))
             {
                 var ts = ReadLong(reader, 0);
-                if (ts is null)
+                if (ts is null) continue;
+                if (!map.TryGetValue(ts.Value, out var b))
                 {
-                    continue;
+                    b = new HostHistoryPointBuilder { Ts = ts.Value };
+                    map[ts.Value] = b;
                 }
 
-                if (!map.TryGetValue(ts.Value, out var builder))
-                {
-                    builder = new HostHistoryPointBuilder { Ts = ts.Value };
-                    map[ts.Value] = builder;
-                }
-
-                builder.CpuPercent = ReadDouble(reader, 1);
-                builder.CpuTemp = ReadDouble(reader, 2);
+                b.CpuPercent = ReadDouble(reader, 1);
+                b.CpuTemp = ReadDouble(reader, 2);
             }
         }
 
         const string memSql = """
             SELECT ts, used_percent, swap_used_percent
             FROM mem_samples
-            WHERE ts >= @cutoff
+            WHERE ts >= $cutoff
             ORDER BY ts ASC
             """;
 
         await using (var memCmd = conn.CreateCommand())
         {
             memCmd.CommandText = memSql;
-            memCmd.Parameters.AddWithValue("@cutoff", cutoffEpoch);
+            memCmd.Parameters.AddWithValue("$cutoff", cutoffEpoch);
 
             await using var reader = await memCmd.ExecuteReaderAsync(ct);
             while (await reader.ReadAsync(ct))
             {
                 var ts = ReadLong(reader, 0);
-                if (ts is null)
+                if (ts is null) continue;
+                if (!map.TryGetValue(ts.Value, out var b))
                 {
-                    continue;
+                    b = new HostHistoryPointBuilder { Ts = ts.Value };
+                    map[ts.Value] = b;
                 }
 
-                if (!map.TryGetValue(ts.Value, out var builder))
-                {
-                    builder = new HostHistoryPointBuilder { Ts = ts.Value };
-                    map[ts.Value] = builder;
-                }
-
-                builder.MemoryPercent = ReadDouble(reader, 1);
-                builder.SwapPercent = ReadDouble(reader, 2);
+                b.MemoryPercent = ReadDouble(reader, 1);
+                b.SwapPercent = ReadDouble(reader, 2);
             }
         }
 
@@ -926,7 +730,7 @@ public class TelemetryRepository
     }
 
     private async Task<List<GpuSample>> GetGpuHistoryAsync(
-        MySqlConnection conn,
+        SqliteConnection conn,
         long cutoffEpoch,
         CancellationToken ct,
         IReadOnlyDictionary<int, string>? gpuLabels = null)
@@ -934,13 +738,13 @@ public class TelemetryRepository
         const string sql = """
             SELECT ts, gpu_index, temp, util, power_w, vram_used_mb, vram_total_mb, fan_percent
             FROM gpu_samples
-            WHERE ts >= @cutoff
+            WHERE ts >= $cutoff
             ORDER BY ts ASC, gpu_index ASC
             """;
 
         await using var cmd = conn.CreateCommand();
         cmd.CommandText = sql;
-        cmd.Parameters.AddWithValue("@cutoff", cutoffEpoch);
+        cmd.Parameters.AddWithValue("$cutoff", cutoffEpoch);
 
         var results = new List<GpuSample>();
         await using var reader = await cmd.ExecuteReaderAsync(ct);
@@ -948,7 +752,9 @@ public class TelemetryRepository
         {
             var ts = ReadLong(reader, 0) ?? DateTimeOffset.UtcNow.ToUnixTimeSeconds();
             var gpuIndex = reader.GetInt32(1);
-            var label = gpuLabels != null && gpuLabels.TryGetValue(gpuIndex, out var named) ? named : null;
+            var label = gpuLabels != null && gpuLabels.TryGetValue(gpuIndex, out var named)
+                ? named
+                : null;
 
             results.Add(new GpuSample(
                 DateTimeOffset.FromUnixTimeSeconds(ts).UtcDateTime,
@@ -979,18 +785,18 @@ public class TelemetryRepository
         }
     }
 
-    private static double? ReadDouble(MySqlDataReader reader, int index) =>
+    private static double? ReadDouble(SqliteDataReader reader, int index) =>
         reader.IsDBNull(index) ? null : reader.GetDouble(index);
 
-    private static long? ReadLong(MySqlDataReader reader, int index) =>
+    private static long? ReadLong(SqliteDataReader reader, int index) =>
         reader.IsDBNull(index) ? null : reader.GetInt64(index);
 
-    private static int? ReadInt(MySqlDataReader reader, int index) =>
+    private static int? ReadInt(SqliteDataReader reader, int index) =>
         reader.IsDBNull(index) ? null : reader.GetInt32(index);
 
     private static long ToEpoch(DateTime dt) => new DateTimeOffset(dt).ToUnixTimeSeconds();
 
-    private static async Task ExecuteNonQueryWithRetryAsync(MySqlCommand cmd, CancellationToken ct)
+    private static async Task ExecuteNonQueryWithRetryAsync(SqliteCommand cmd, CancellationToken ct)
     {
         var deadline = DateTime.UtcNow.AddSeconds(30);
         while (true)
@@ -1002,7 +808,7 @@ public class TelemetryRepository
                 await cmd.ExecuteNonQueryAsync(ct);
                 return;
             }
-            catch (MySqlException ex) when (IsLockError(ex))
+            catch (SqliteException ex) when (IsLockError(ex))
             {
                 if (DateTime.UtcNow >= deadline)
                 {
@@ -1014,104 +820,12 @@ public class TelemetryRepository
         }
     }
 
-    private static bool IsLockError(MySqlException ex) =>
-        ex.Number == 1205 || // Lock wait timeout exceeded
-        ex.Number == 1213;   // Deadlock found
-
-    private const int DefaultFanMaxRpm = 4000;
-
-    private static string NormalizeMode(string? mode) =>
-        string.Equals(mode?.Trim(), "override", StringComparison.OrdinalIgnoreCase) ? "override" : "default";
-
-    private static string NormalizeCurveMode(string? curveMode)
+    private static bool IsLockError(SqliteException ex)
     {
-        var normalized = curveMode?.Trim().ToLowerInvariant();
-        return normalized switch
-        {
-            "cpu" => "cpu",
-            "gpu" => "gpu",
-            "custom" => "custom",
-            _ => "custom"
-        };
-    }
-
-    private static string NormalizeCurveSource(string? curveSource, string curveMode)
-    {
-        if (curveMode == "gpu")
-        {
-            return "gpu";
-        }
-
-        if (curveMode == "cpu")
-        {
-            return "cpu";
-        }
-
-        return string.Equals(curveSource?.Trim(), "gpu", StringComparison.OrdinalIgnoreCase) ? "gpu" : "cpu";
-    }
-
-    private static IReadOnlyList<FanCurvePoint> DefaultFanCurve(int maxRpm)
-    {
-        var safeMax = Math.Max(maxRpm, 1000);
-        return new List<FanCurvePoint>
-        {
-            new(30, (int)Math.Round(safeMax * 0.3)),
-            new(45, (int)Math.Round(safeMax * 0.45)),
-            new(60, (int)Math.Round(safeMax * 0.65)),
-            new(75, (int)Math.Round(safeMax * 0.85)),
-            new(90, safeMax)
-        };
-    }
-
-    private static IReadOnlyList<FanCurvePoint> NormalizeCurve(IReadOnlyList<FanCurvePoint> curve, int maxRpm)
-    {
-        if (curve is null || curve.Count == 0)
-        {
-            return DefaultFanCurve(maxRpm);
-        }
-
-        return curve
-            .Select(point => new FanCurvePoint(
-                Math.Max(0, point.TempC),
-                Math.Max(0, point.Rpm)
-            ))
-            .OrderBy(point => point.TempC)
-            .ToList();
-    }
-
-    private static IReadOnlyList<FanCurvePoint> ParseCurvePoints(string? raw)
-    {
-        if (string.IsNullOrWhiteSpace(raw))
-        {
-            return Array.Empty<FanCurvePoint>();
-        }
-
-        try
-        {
-            return JsonSerializer.Deserialize<List<FanCurvePoint>>(raw, JsonOpts) ?? new List<FanCurvePoint>();
-        }
-        catch
-        {
-            return Array.Empty<FanCurvePoint>();
-        }
-    }
-
-    private static IReadOnlyList<int> ParseGpuIndices(string? raw)
-    {
-        if (string.IsNullOrWhiteSpace(raw))
-        {
-            return Array.Empty<int>();
-        }
-
-        try
-        {
-            var data = JsonSerializer.Deserialize<List<int>>(raw, JsonOpts);
-            return data?.Distinct().OrderBy(x => x).ToList() ?? new List<int>();
-        }
-        catch
-        {
-            return Array.Empty<int>();
-        }
+        var code = ex.ErrorCode;
+        return code == 5 || // SQLITE_BUSY
+               code == 6 || // SQLITE_LOCKED
+               code == 8;   // SQLITE_READONLY
     }
 
     private sealed class HostHistoryPointBuilder

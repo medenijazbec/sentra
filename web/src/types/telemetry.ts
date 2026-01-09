@@ -28,6 +28,7 @@ export type GpuSample = {
   vramUsedMb?: number;
   vramTotalMb?: number;
   fanPercent?: number;
+  label?: string;
 };
 
 export type DiskSample = {
@@ -49,6 +50,27 @@ export type FanSample = {
   timestamp: string;
   label: string;
   rpm?: number;
+};
+
+export type FanCurvePoint = {
+  tempC: number;
+  rpm: number;
+};
+
+export type FanProfile = {
+  fanId: string;
+  displayName?: string;
+  mode: "default" | "override";
+  maxRpm?: number;
+  curveMode: "custom" | "cpu" | "gpu";
+  curveSource?: "cpu" | "gpu";
+  curve: FanCurvePoint[];
+  gpuIndices: number[];
+};
+
+export type FanSettingsResponse = {
+  fans: FanProfile[];
+  maxRecordedRpm: Record<string, number>;
 };
 
 export type TelemetrySummary = {
