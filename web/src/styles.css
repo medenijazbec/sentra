@@ -223,6 +223,11 @@ a {
   transition: border-color 0.15s ease, transform 0.15s ease;
 }
 
+.ghost-btn--small {
+  padding: 6px 10px;
+  font-size: 12px;
+}
+
 .ghost-btn:hover {
   border-color: rgba(var(--phosphor-rgb), 0.7);
   transform: translateY(-1px);
@@ -565,6 +570,63 @@ a {
   gap: 8px;
   flex-wrap: wrap;
   justify-content: flex-end;
+}
+
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(1, 8, 6, 0.7);
+  display: grid;
+  place-items: center;
+  z-index: 20;
+}
+
+.modal {
+  width: min(760px, 92vw);
+  max-height: 90vh;
+  overflow: auto;
+  background: var(--panel-strong);
+  border: 1px solid rgba(var(--phosphor-rgb), 0.4);
+  border-radius: 16px;
+  padding: 16px;
+  box-shadow: 0 30px 80px rgba(0, 0, 0, 0.45);
+}
+
+.modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  border-bottom: 1px solid rgba(var(--phosphor-rgb), 0.2);
+  padding-bottom: 10px;
+  margin-bottom: 12px;
+}
+
+.modal-title {
+  font-size: 13px;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: var(--muted);
+}
+
+.modal-subtitle {
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.modal-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  padding-top: 12px;
+  border-top: 1px solid rgba(var(--phosphor-rgb), 0.2);
+  margin-top: 12px;
+}
+
+.fan-modal-body {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
 }
 
 .fan-control-row {

@@ -18,7 +18,7 @@ import os
 import json
 import glob
 import subprocess
-from typing import Dict, Optional, Tuple
+from typing import Dict, Optional, Tuple, List
 
 
 def _get_sys_prefix() -> str:
@@ -124,23 +124,56 @@ def read_hwmon_fans(sys_prefix: str) -> Dict[str, float]:
     We'll label fans as "<chipname>:fanX".
     """
     fans: Dict[str, float] = {}
-
+    preferred_chips = ["nct6791"]
     hwmons = glob.glob(os.path.join(sys_prefix, "class", "hwmon", "hwmon*"))
-    for hm in hwmons:
-        # Try to read the chip name (/sys/class/hwmon/hwmonX/name)
-        name_path = os.path.join(hm, "name")
+
+    def _read_chip_name(path: str) -> str:
+        name_path = os.path.join(path, "name")
         try:
             with open(name_path, "r") as f:
-                chip_name = f.read().strip()
+                return f.read().strip()
         except Exception:
-            chip_name = os.path.basename(hm)
+            return os.path.basename(path)
+
+    def _real_device(path: str) -> str:
+        try:
+            return os.path.realpath(os.path.join(path, "device"))
+        except Exception:
+            return path
+
+    def _fan_label(hm: str, chip_name: str, fan_file: str) -> str:
+        base = os.path.basename(fan_file)  # fan1_input
+        fan_id = base.replace("_input", "")
+        label_path = os.path.join(hm, f"{fan_id}_label")
+        try:
+            with open(label_path, "r") as f:
+                label = f.read().strip()
+            if label:
+                return f"{chip_name}:{label}"
+        except Exception:
+            pass
+        return f"{chip_name}:{fan_id}"
+
+    hwmon_info: List[Tuple[str, str, str]] = []
+    for hm in hwmons:
+        chip_name = _read_chip_name(hm)
+        device_id = _real_device(hm)
+        hwmon_info.append((hm, chip_name, device_id))
+
+    preferred = [info for info in hwmon_info if info[1] in preferred_chips]
+    selected = preferred if preferred else hwmon_info
+
+    seen_devices = set()
+    for hm, chip_name, device_id in selected:
+        if device_id in seen_devices:
+            continue
+        seen_devices.add(device_id)
 
         for fan_file in glob.glob(os.path.join(hm, "fan*_input")):
             rpm = _read_file_float(fan_file)
             if rpm is None:
                 continue
-            base = os.path.basename(fan_file)  # e.g. fan1_input
-            fan_label = f"{chip_name}:{base.replace('_input','')}"
+            fan_label = _fan_label(hm, chip_name, fan_file)
             fans[fan_label] = rpm
 
     return fans
@@ -198,8 +231,11 @@ def get_temperatures_and_fans() -> Tuple[Optional[float], Dict[str, float]]:
     # fans
     fans = extract_fans_from_sensors(sensors_json)
     hwmon_fans = read_hwmon_fans(sys_prefix)
-    # merge hwmon fallback fans if they aren't already present
-    for k, v in hwmon_fans.items():
-        fans.setdefault(k, v)
+    # If preferred hwmon fans are present, use them to avoid duplicate aliases.
+    if hwmon_fans:
+        fans = hwmon_fans
+    else:
+        for k, v in hwmon_fans.items():
+            fans.setdefault(k, v)
 
     return cpu_temp, fans

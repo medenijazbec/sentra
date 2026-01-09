@@ -30,6 +30,7 @@ export default function App() {
   const [fanSaving, setFanSaving] = useState(false);
   const [fanSaveStatus, setFanSaveStatus] = useState<string | null>(null);
   const [fanDirty, setFanDirty] = useState(false);
+  const [fanSettingsOpenId, setFanSettingsOpenId] = useState<string | null>(null);
 
   useEffect(() => {
     const root = document.documentElement;
@@ -373,6 +374,65 @@ export default function App() {
     }
   }, [fanSaving]);
 
+  const normalizeFan = useCallback((fan: FanProfile) => {
+    const sortedCurve = [...(fan.curve ?? [])].sort(
+      (a, b) => a.tempC - b.tempC
+    );
+    const sortedGpu = [...(fan.gpuIndices ?? [])].sort((a, b) => a - b);
+    return {
+      ...fan,
+      displayName: fan.displayName?.trim() ?? "",
+      curve: sortedCurve,
+      gpuIndices: sortedGpu,
+    };
+  }, []);
+
+  const computeDirty = useCallback(
+    (drafts: Record<string, FanProfile>, settings: FanSettingsResponse | null) => {
+      if (!settings) return true;
+      const baseMap: Record<string, FanProfile> = {};
+      settings.fans.forEach((fan) => {
+        baseMap[fan.fanId] = fan;
+      });
+      const draftKeys = Object.keys(drafts).sort();
+      const baseKeys = Object.keys(baseMap).sort();
+      if (draftKeys.join("|") !== baseKeys.join("|")) return true;
+      return draftKeys.some((key) => {
+        const draft = normalizeFan(drafts[key]);
+        const base = normalizeFan(baseMap[key]);
+        return JSON.stringify(draft) !== JSON.stringify(base);
+      });
+    },
+    [normalizeFan]
+  );
+
+  const handleApplyFanSettings = useCallback(
+    async (fanId: string) => {
+      if (fanSaving) return;
+      const fan = fanDrafts[fanId];
+      if (!fan) return;
+      setFanSaving(true);
+      setFanSaveStatus(null);
+      try {
+        const updated = await saveFanSettings([fan]);
+        setFanSettings(updated);
+        const map: Record<string, FanProfile> = {};
+        updated.fans.forEach((entry) => {
+          map[entry.fanId] = entry;
+        });
+        const nextDrafts = { ...fanDrafts, [fanId]: map[fanId] ?? fan };
+        setFanDrafts(nextDrafts);
+        setFanDirty(computeDirty(nextDrafts, updated));
+        setFanSaveStatus(`Applied settings for ${fanId}.`);
+      } catch (err) {
+        setFanSaveStatus(`Apply failed: ${(err as Error).message}`);
+      } finally {
+        setFanSaving(false);
+      }
+    },
+    [fanDrafts, fanSaving, computeDirty]
+  );
+
   const formatFanLabel = useCallback(
     (fanId: string) => {
       const name = fanDisplayMap[fanId];
@@ -385,6 +445,13 @@ export default function App() {
     () => Object.values(fanDrafts).some((fan) => fan.mode === "override"),
     [fanDrafts]
   );
+
+  useEffect(() => {
+    if (!fanSettingsOpenId) return;
+    if (fanDrafts[fanSettingsOpenId]?.mode !== "override") {
+      setFanSettingsOpenId(null);
+    }
+  }, [fanDrafts, fanSettingsOpenId]);
 
   const updated = summary
     ? new Date(summary.timestamp).toLocaleTimeString()
@@ -781,11 +848,6 @@ export default function App() {
                     const maxRecorded =
                       maxRecordedMap[fan.fanId] ?? liveFan?.rpm ?? 0;
                     const maxRpm = fan.maxRpm ?? Math.round(maxRecorded || 4000);
-                    const usesGpu =
-                      fan.curveMode === "gpu" ||
-                      (fan.curveMode === "custom" &&
-                        fan.curveSource === "gpu");
-
                     return (
                       <div key={fan.fanId} className="card fan-control-card">
                         <div className="fan-control-head">
@@ -804,6 +866,14 @@ export default function App() {
                             <span className="badge">
                               max seen {Math.round(maxRecorded)} RPM
                             </span>
+                            {fan.mode === "override" && (
+                              <button
+                                className="ghost-btn ghost-btn--small"
+                                onClick={() => setFanSettingsOpenId(fan.fanId)}
+                              >
+                                Settings
+                              </button>
+                            )}
                           </div>
                         </div>
 
@@ -851,125 +921,171 @@ export default function App() {
                             </button>
                           </div>
                         </div>
-
-                        {fan.mode === "override" && (
-                          <>
-                            <div className="fan-control-row">
-                              <label>Max RPM</label>
-                              <input
-                                className="ghost-input"
-                                type="number"
-                                min={0}
-                                step={50}
-                                value={maxRpm}
-                                onChange={(e) =>
-                                  (() => {
-                                    const nextMax = Number(e.target.value);
-                                    const currentMax = fan.maxRpm ?? maxRpm;
-                                    const scaledCurve = fan.curve.length
-                                      ? fan.curve.map((point) => ({
-                                          ...point,
-                                          rpm: Math.round(
-                                            (point.rpm / Math.max(currentMax, 1)) *
-                                              Math.max(nextMax, 1)
-                                          ),
-                                        }))
-                                      : defaultFanCurve(nextMax);
-                                    updateFanDraft(fan.fanId, {
-                                      maxRpm: nextMax,
-                                      curve: scaledCurve,
-                                    });
-                                  })()
-                                }
-                              />
-                              <div className="fan-control-hint">
-                                default from {Math.round(maxRecorded)} RPM,
-                                can exceed
-                              </div>
-                            </div>
-
-                            <div className="fan-control-row">
-                              <label>Curve mode</label>
-                              <select
-                                className="ghost-input"
-                                value={fan.curveMode}
-                                onChange={(e) =>
-                                  handleCurveModeChange(
-                                    fan.fanId,
-                                    e.target.value as FanProfile["curveMode"]
-                                  )
-                                }
-                              >
-                                <option value="custom">User curve</option>
-                                <option value="cpu">CPU temp curve</option>
-                                <option value="gpu">GPU temp curve</option>
-                              </select>
-                            </div>
-
-                            {fan.curveMode === "custom" && (
-                              <div className="fan-control-row">
-                                <label>Temp source</label>
-                                <select
-                                  className="ghost-input"
-                                  value={fan.curveSource ?? "cpu"}
-                                  onChange={(e) =>
-                                    handleCurveSourceChange(
-                                      fan.fanId,
-                                      e.target.value as "cpu" | "gpu"
-                                    )
-                                  }
-                                >
-                                  <option value="cpu">CPU sensors</option>
-                                  <option value="gpu">GPU sensors</option>
-                                </select>
-                              </div>
-                            )}
-
-                            {usesGpu && (
-                              <div className="fan-control-row fan-gpu-row">
-                                <label>GPU pool</label>
-                                {gpuOptions.length ? (
-                                  <div className="chip-row">
-                                    {gpuOptions.map((gpu) => (
-                                      <button
-                                        key={gpu.gpuIndex}
-                                        className={
-                                          fan.gpuIndices.includes(gpu.gpuIndex)
-                                            ? "chip chip-active"
-                                            : "chip"
-                                        }
-                                        onClick={() =>
-                                          handleGpuToggle(fan.fanId, gpu.gpuIndex)
-                                        }
-                                      >
-                                        {gpu.label}
-                                      </button>
-                                    ))}
-                                  </div>
-                                ) : (
-                                  <div className="muted">
-                                    no GPUs detected for pooling
-                                  </div>
-                                )}
-                                <div className="fan-control-hint">
-                                  Uses max temperature of selected GPUs.
-                                </div>
-                              </div>
-                            )}
-
-                            <FanCurveEditor
-                              curve={fan.curve}
-                              maxRpm={maxRpm}
-                              onChange={(nextCurve) =>
-                                updateFanCurve(fan.fanId, nextCurve)
-                              }
-                            />
-                          </>
-                        )}
                       </div>
                     );
                   })}
               </div>
+
+              {fanSettingsOpenId && fanDrafts[fanSettingsOpenId] && (
+                <div className="modal-backdrop">
+                  <div className="modal">
+                    <div className="modal-header">
+                      <div>
+                        <div className="modal-title">
+                          Override settings
+                        </div>
+                        <div className="modal-subtitle">
+                          {fanDrafts[fanSettingsOpenId].displayName?.trim() ||
+                            fanSettingsOpenId}
+                        </div>
+                      </div>
+                      <button
+                        className="ghost-btn ghost-btn--small"
+                        onClick={() => setFanSettingsOpenId(null)}
+                      >
+                        Close
+                      </button>
+                    </div>
+
+                    <div className="fan-modal-body">
+                      <div className="fan-control-row">
+                        <label>Max RPM</label>
+                        <input
+                          className="ghost-input"
+                          type="number"
+                          min={0}
+                          step={50}
+                          value={
+                            fanDrafts[fanSettingsOpenId].maxRpm ??
+                            Math.round(
+                              maxRecordedMap[fanSettingsOpenId] ?? 4000
+                            )
+                          }
+                          onChange={(e) => {
+                            const nextMax = Number(e.target.value);
+                            const fan = fanDrafts[fanSettingsOpenId];
+                            const currentMax =
+                              fan.maxRpm ??
+                              Math.round(
+                                maxRecordedMap[fanSettingsOpenId] ?? 4000
+                              );
+                            const scaledCurve = fan.curve.length
+                              ? fan.curve.map((point) => ({
+                                  ...point,
+                                  rpm: Math.round(
+                                    (point.rpm / Math.max(currentMax, 1)) *
+                                      Math.max(nextMax, 1)
+                                  ),
+                                }))
+                              : defaultFanCurve(nextMax);
+                            updateFanDraft(fanSettingsOpenId, {
+                              maxRpm: nextMax,
+                              curve: scaledCurve,
+                            });
+                          }}
+                        />
+                        <div className="fan-control-hint">
+                          default from{" "}
+                          {Math.round(maxRecordedMap[fanSettingsOpenId] ?? 0)} RPM,
+                          can exceed
+                        </div>
+                      </div>
+
+                      <div className="fan-control-row">
+                        <label>Curve mode</label>
+                        <select
+                          className="ghost-input"
+                          value={fanDrafts[fanSettingsOpenId].curveMode}
+                          onChange={(e) =>
+                            handleCurveModeChange(
+                              fanSettingsOpenId,
+                              e.target.value as FanProfile["curveMode"]
+                            )
+                          }
+                        >
+                          <option value="custom">User curve</option>
+                          <option value="cpu">CPU temp curve</option>
+                          <option value="gpu">GPU temp curve</option>
+                        </select>
+                      </div>
+
+                      {fanDrafts[fanSettingsOpenId].curveMode === "custom" && (
+                        <div className="fan-control-row">
+                          <label>Temp source</label>
+                          <select
+                            className="ghost-input"
+                            value={fanDrafts[fanSettingsOpenId].curveSource ?? "cpu"}
+                            onChange={(e) =>
+                              handleCurveSourceChange(
+                                fanSettingsOpenId,
+                                e.target.value as "cpu" | "gpu"
+                              )
+                            }
+                          >
+                            <option value="cpu">CPU sensors</option>
+                            <option value="gpu">GPU sensors</option>
+                          </select>
+                        </div>
+                      )}
+
+                      {(fanDrafts[fanSettingsOpenId].curveMode === "gpu" ||
+                        (fanDrafts[fanSettingsOpenId].curveMode === "custom" &&
+                          fanDrafts[fanSettingsOpenId].curveSource === "gpu")) && (
+                        <div className="fan-control-row fan-gpu-row">
+                          <label>GPU pool</label>
+                          {gpuOptions.length ? (
+                            <div className="chip-row">
+                              {gpuOptions.map((gpu) => (
+                                <button
+                                  key={gpu.gpuIndex}
+                                  className={
+                                    fanDrafts[fanSettingsOpenId].gpuIndices.includes(
+                                      gpu.gpuIndex
+                                    )
+                                      ? "chip chip-active"
+                                      : "chip"
+                                  }
+                                  onClick={() =>
+                                    handleGpuToggle(fanSettingsOpenId, gpu.gpuIndex)
+                                  }
+                                >
+                                  {gpu.label}
+                                </button>
+                              ))}
+                            </div>
+                          ) : (
+                            <div className="muted">no GPUs detected for pooling</div>
+                          )}
+                          <div className="fan-control-hint">
+                            Uses max temperature of selected GPUs.
+                          </div>
+                        </div>
+                      )}
+
+                      <FanCurveEditor
+                        curve={fanDrafts[fanSettingsOpenId].curve}
+                        maxRpm={
+                          fanDrafts[fanSettingsOpenId].maxRpm ??
+                          Math.round(maxRecordedMap[fanSettingsOpenId] ?? 4000)
+                        }
+                        onChange={(nextCurve) =>
+                          updateFanCurve(fanSettingsOpenId, nextCurve)
+                        }
+                      />
+                    </div>
+
+                    <div className="modal-footer">
+                      <button
+                        className="ghost-btn"
+                        onClick={() => handleApplyFanSettings(fanSettingsOpenId)}
+                        disabled={fanSaving}
+                      >
+                        {fanSaving ? "Applying..." : "Apply"}
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )}
             </div>
           </section>
 
